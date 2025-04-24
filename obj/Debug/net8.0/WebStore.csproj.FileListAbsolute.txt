@@ -116,3 +116,4 @@ C:\Users\ranug\OneDrive\Desktop\4th semester\database\DatabaseDemo-main (1)\Data
 C:\Users\ranug\OneDrive\Desktop\4th semester\database\DatabaseDemo-main (1)\DatabaseDemo-main\WebStore\obj\Debug\net8.0\WebStore.pdb
 C:\Users\ranug\OneDrive\Desktop\4th semester\database\DatabaseDemo-main (1)\DatabaseDemo-main\WebStore\obj\Debug\net8.0\WebStore.genruntimeconfig.cache
 C:\Users\ranug\OneDrive\Desktop\4th semester\database\DatabaseDemo-main (1)\DatabaseDemo-main\WebStore\obj\Debug\net8.0\ref\WebStore.dll
+C:\Users\ranug\OneDrive\Desktop\4th semester\database\DatabaseDemo-main (1)\DatabaseDemo-main\WebStore\obj\Debug\net8.0\WebStore.sourcelink.json

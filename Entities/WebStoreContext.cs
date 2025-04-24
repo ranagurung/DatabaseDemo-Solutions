@@ -7,6 +7,8 @@ namespace WebStore.Entities;
 public partial class WebStoreContext : DbContext
 {
     public DbSet<Carrier> Carriers => Set<Carrier>();
+    public DbSet<DiscountCode> DiscountCodes => Set<DiscountCode>();
+    
     public WebStoreContext()
     {
     }
@@ -17,73 +19,145 @@ public partial class WebStoreContext : DbContext
     }
 
     public virtual DbSet<Address> Addresses { get; set; }
-
     public virtual DbSet<Category> Categories { get; set; }
-
     public virtual DbSet<Customer> Customers { get; set; }
-
     public virtual DbSet<Order> Orders { get; set; }
-
     public virtual DbSet<OrderItem> OrderItems { get; set; }
-
     public virtual DbSet<Product> Products { get; set; }
-
     public virtual DbSet<Staff> Staff { get; set; }
-
     public virtual DbSet<Stock> Stocks { get; set; }
-
     public virtual DbSet<Store> Stores { get; set; }
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
         => optionsBuilder.UseNpgsql("Host=localhost;Port=5432;Database=WebStore;Username=postgres;Password=12345");
-
+    
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
-        modelBuilder.Entity<Carrier>(entity =>
+    base.OnModelCreating(modelBuilder);
+
+    // 1. Register the enum type (no labels parameter available)
+    modelBuilder.HasPostgresEnum<DiscountType>(
+        schema: "public",
+        name: "discount_type"
+    );
+
+// Just ONE configuration block for DiscountCode:
+modelBuilder.Entity<DiscountCode>(entity =>
 {
-    entity.HasKey(e => e.CarrierId).HasName("carriers_pkey");
-
-    entity.ToTable("carriers");
-    entity.Property(e => e.CarrierName)
+    // Table and key
+    entity.ToTable("discount_codes");
+    entity.HasKey(e => e.DiscountCodeId).HasName("discount_codes_pkey");
+    
+    // Map ALL properties to their database columns
+    entity.Property(e => e.DiscountCodeId)
+        .HasColumnName("DiscountCoded"); // Matches your DB column name
+        
+    entity.Property(e => e.Code)
+        .HasColumnName("Code")
         .HasMaxLength(50)
-        .HasColumnName("carrier_name");
-
-    entity.Property(e => e.ContactUrl)
-        .HasMaxLength(50)
-        .HasColumnName("contact_url");
-
-    entity.Property(e => e.ContactPhone)
-        .HasMaxLength(50)
-        .HasColumnName("contact_phone");
-
-    entity.HasMany(c => c.Orders)
-        .WithOne(o => o.Carrier)
-        .HasForeignKey(o => o.CarrierId)
-        .OnDelete(DeleteBehavior.SetNull); // If carrier is deleted -> order reference is set to null
+        .IsRequired();
+        
+    entity.Property(e => e.Description)
+        .HasColumnName("Description");
+        
+    // Special handling for the enum
+    entity.Property(e => e.DiscountType)
+        .HasColumnName("DiscountType")
+        .HasColumnType("discount_type")
+        .HasConversion(
+            v => v.ToString(), // Convert enum to string
+            v => (DiscountType)Enum.Parse(typeof(DiscountType), v) // Convert back
+        );
+        
+    entity.Property(e => e.DiscountValue)
+        .HasColumnName("DiscountValue")
+        .HasPrecision(10, 2); // For decimal values
+        
+    entity.Property(e => e.ExpirationDate)
+        .HasColumnName("ExpirationDate");
+        
+    entity.Property(e => e.MaxUsage)
+        .HasColumnName("MaxUsage");
+        
+    entity.Property(e => e.TimesUsed)
+        .HasColumnName("TimesUsed")
+        .HasDefaultValue(0); // Default when not specified
 });
+        // Configure Carrier entity
+        modelBuilder.Entity<Carrier>(entity =>
+        {
+            entity.HasKey(e => e.CarrierId).HasName("carriers_pkey");
+            entity.ToTable("carriers");
+            
+            entity.Property(e => e.CarrierName)
+                .HasMaxLength(50)
+                .HasColumnName("carrier_name");
+            entity.Property(e => e.ContactUrl)
+                .HasMaxLength(50)
+                .HasColumnName("contact_url");
+            entity.Property(e => e.ContactPhone)
+                .HasMaxLength(50)
+                .HasColumnName("contact_phone");
 
+            entity.HasMany(c => c.Orders)
+                .WithOne(o => o.Carrier)
+                .HasForeignKey(o => o.CarrierId)
+                .OnDelete(DeleteBehavior.SetNull);
+        });
+        // Configure Order entity (updated with discount code relationship)
         modelBuilder.Entity<Order>(entity =>
         {
-            // Key, columns, etc.
-            // entity.HasKey(o => o.OrderId);
+            entity.HasKey(e => e.OrderId).HasName("orders_pkey");
+            entity.ToTable("orders");
+            
+            entity.Property(e => e.OrderId).HasColumnName("order_id");
+            entity.Property(e => e.BillingAddressId).HasColumnName("billing_address_id");
+            entity.Property(e => e.CustomerId).HasColumnName("customer_id");
+            entity.Property(e => e.OrderDate)
+                .HasColumnType("timestamp without time zone")
+                .HasColumnName("order_date");
+            entity.Property(e => e.OrderStatus)
+                .HasMaxLength(20)
+                .HasColumnName("order_status");
+            entity.Property(e => e.ShippingAddressId).HasColumnName("shipping_address_id");
+            entity.Property(e => e.DiscountCodeId).HasColumnName("discount_code_id");
+            entity.Property(e => e.TrackingNumber)
+                .HasMaxLength(50)
+                .HasColumnName("tracking_number");
+            entity.Property(e => e.ShippedDate)
+                .HasColumnName("shipped_date");
+            entity.Property(e => e.DeliveredDate)
+                .HasColumnName("delivered_date");
 
-            // For the order tracking fields:
-            entity.Property(o => o.TrackingNumber)
-          .HasColumnName("tracking_number")
-          .HasMaxLength(50);
+            entity.HasOne(d => d.BillingAddress)
+                .WithMany(p => p.OrderBillingAddresses)
+                .HasForeignKey(d => d.BillingAddressId)
+                .OnDelete(DeleteBehavior.Restrict)
+                .HasConstraintName("fk_orders_billing_address");
 
-            entity.Property(o => o.ShippedDate)
-          .HasColumnName("shipped_date");
+            entity.HasOne(d => d.Customer)
+                .WithMany(p => p.Orders)
+                .HasForeignKey(d => d.CustomerId)
+                .OnDelete(DeleteBehavior.Restrict)
+                .HasConstraintName("fk_orders_customer");
 
-            entity.Property(o => o.DeliveredDate)
-          .HasColumnName("delivered_date");
+            entity.HasOne(d => d.ShippingAddress)
+                .WithMany(p => p.OrderShippingAddresses)
+                .HasForeignKey(d => d.ShippingAddressId)
+                .OnDelete(DeleteBehavior.Restrict)
+                .HasConstraintName("fk_orders_shipping_address");
+
+            entity.HasOne(d => d.DiscountCode)
+                .WithMany(p => p.Orders)
+                .HasForeignKey(d => d.DiscountCodeId)
+                .OnDelete(DeleteBehavior.SetNull);
         });
+
+        // Rest of your existing configurations...
         modelBuilder.Entity<Address>(entity =>
         {
             entity.HasKey(e => e.AddressId).HasName("addresses_pkey");
-
             entity.ToTable("addresses");
-
             entity.Property(e => e.AddressId).HasColumnName("address_id");
             entity.Property(e => e.AddressType)
                 .HasMaxLength(20)
@@ -113,9 +187,7 @@ public partial class WebStoreContext : DbContext
         modelBuilder.Entity<Category>(entity =>
         {
             entity.HasKey(e => e.CategoryId).HasName("categories_pkey");
-
             entity.ToTable("categories");
-
             entity.Property(e => e.CategoryId).HasColumnName("category_id");
             entity.Property(e => e.CategoryName)
                 .HasMaxLength(100)
@@ -148,9 +220,7 @@ public partial class WebStoreContext : DbContext
         modelBuilder.Entity<Customer>(entity =>
         {
             entity.HasKey(e => e.CustomerId).HasName("customers_pkey");
-
             entity.ToTable("customers");
-
             entity.Property(e => e.CustomerId).HasColumnName("customer_id");
             entity.Property(e => e.CreatedAt)
                 .HasColumnType("timestamp without time zone")
@@ -172,45 +242,10 @@ public partial class WebStoreContext : DbContext
                 .HasColumnName("updated_at");
         });
 
-        modelBuilder.Entity<Order>(entity =>
-        {
-            entity.HasKey(e => e.OrderId).HasName("orders_pkey");
-
-            entity.ToTable("orders");
-
-            entity.Property(e => e.OrderId).HasColumnName("order_id");
-            entity.Property(e => e.BillingAddressId).HasColumnName("billing_address_id");
-            entity.Property(e => e.CustomerId).HasColumnName("customer_id");
-            entity.Property(e => e.OrderDate)
-                .HasColumnType("timestamp without time zone")
-                .HasColumnName("order_date");
-            entity.Property(e => e.OrderStatus)
-                .HasMaxLength(20)
-                .HasColumnName("order_status");
-            entity.Property(e => e.ShippingAddressId).HasColumnName("shipping_address_id");
-
-            entity.HasOne(d => d.BillingAddress).WithMany(p => p.OrderBillingAddresses)
-                .HasForeignKey(d => d.BillingAddressId)
-                .OnDelete(DeleteBehavior.Restrict)
-                .HasConstraintName("fk_orders_billing_address");
-
-            entity.HasOne(d => d.Customer).WithMany(p => p.Orders)
-                .HasForeignKey(d => d.CustomerId)
-                .OnDelete(DeleteBehavior.Restrict)
-                .HasConstraintName("fk_orders_customer");
-
-            entity.HasOne(d => d.ShippingAddress).WithMany(p => p.OrderShippingAddresses)
-                .HasForeignKey(d => d.ShippingAddressId)
-                .OnDelete(DeleteBehavior.Restrict)
-                .HasConstraintName("fk_orders_shipping_address");
-        });
-
         modelBuilder.Entity<OrderItem>(entity =>
         {
             entity.HasKey(e => new { e.OrderId, e.ProductId }).HasName("pk_order_items");
-
             entity.ToTable("order_items");
-
             entity.Property(e => e.OrderId).HasColumnName("order_id");
             entity.Property(e => e.ProductId).HasColumnName("product_id");
             entity.Property(e => e.Discount)
@@ -233,9 +268,7 @@ public partial class WebStoreContext : DbContext
         modelBuilder.Entity<Product>(entity =>
         {
             entity.HasKey(e => e.ProductId).HasName("products_pkey");
-
             entity.ToTable("products");
-
             entity.Property(e => e.ProductId).HasColumnName("product_id");
             entity.Property(e => e.CreatedAt)
                 .HasColumnType("timestamp without time zone")
@@ -257,9 +290,7 @@ public partial class WebStoreContext : DbContext
         modelBuilder.Entity<Staff>(entity =>
         {
             entity.HasKey(e => e.StaffId).HasName("staff_pkey");
-
             entity.ToTable("staff");
-
             entity.Property(e => e.StaffId).HasColumnName("staff_id");
             entity.Property(e => e.Email)
                 .HasMaxLength(100)
@@ -283,9 +314,7 @@ public partial class WebStoreContext : DbContext
         modelBuilder.Entity<Stock>(entity =>
         {
             entity.HasKey(e => new { e.StoreId, e.ProductId }).HasName("pk_stocks");
-
             entity.ToTable("stocks");
-
             entity.Property(e => e.StoreId).HasColumnName("store_id");
             entity.Property(e => e.ProductId).HasColumnName("product_id");
             entity.Property(e => e.QuantityInStock)
@@ -307,9 +336,7 @@ public partial class WebStoreContext : DbContext
         modelBuilder.Entity<Store>(entity =>
         {
             entity.HasKey(e => e.StoreId).HasName("stores_pkey");
-
             entity.ToTable("stores");
-
             entity.Property(e => e.StoreId).HasColumnName("store_id");
             entity.Property(e => e.City)
                 .HasMaxLength(50)
